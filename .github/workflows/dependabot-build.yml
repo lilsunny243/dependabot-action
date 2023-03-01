@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Fetch dependabot metadata
         id: dependabot-metadata
-        uses: dependabot/fetch-metadata@v1.3.3
+        uses: dependabot/fetch-metadata@v1.3.6
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
   build-dependabot-changes:
@@ -37,7 +37,7 @@ jobs:
 
       - name: Read .nvmrc
         id: nvm
-        run: echo ::set-output name=NVMRC::$(cat .nvmrc)
+        run: echo "NVMRC=$(cat .nvmrc)" >> $GITHUB_OUTPUT
 
       - name: Setup Node.js
         uses: actions/setup-node@v3

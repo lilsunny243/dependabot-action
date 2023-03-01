@@ -1,4 +1,4 @@
-import {UPDATER_IMAGE_NAME, PROXY_IMAGE_NAME} from '../src/docker-tags'
+import {updaterImageName, PROXY_IMAGE_NAME} from '../src/docker-tags'
 import {ImageService} from '../src/image-service'
 import {removeDanglingUpdaterContainers, integration} from './helpers'
 import Docker from 'dockerode'
@@ -35,7 +35,7 @@ integration('UpdaterBuilder', () => {
 
   beforeAll(async () => {
     await ImageService.pull(PROXY_IMAGE_NAME)
-    await ImageService.pull(UPDATER_IMAGE_NAME)
+    await ImageService.pull(updaterImageName('bundler'))
 
     fs.mkdirSync(workingDirectory)
   })
@@ -63,6 +63,7 @@ integration('UpdaterBuilder', () => {
       'cred-token',
       'https://example.com',
       '172.17.0.1',
+      updaterImageName('bundler'),
       workingDirectory
     )
     const container = await new UpdaterBuilder(
@@ -71,9 +72,8 @@ integration('UpdaterBuilder', () => {
       input,
       outputPath,
       proxy,
-      repoPath,
-      UPDATER_IMAGE_NAME
-    ).run('updater-image-test', 'fetch_files')
+      updaterImageName('bundler')
+    ).run('updater-image-test')
 
     const containerInfo = await container.inspect()
 

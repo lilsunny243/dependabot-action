@@ -2,10 +2,11 @@ import fs from 'fs'
 import path from 'path'
 import * as core from '@actions/core'
 import {Context} from '@actions/github/lib/context'
-import {ApiClient} from '../src/api-client'
+import {ApiClient, JobDetails} from '../src/api-client'
 import {ContainerRuntimeError} from '../src/container-service'
-import {Updater, UpdaterFetchError} from '../src/updater'
+import {Updater} from '../src/updater'
 import {ImageService} from '../src/image-service'
+import {updaterImageName} from '../src/docker-tags'
 import * as inputs from '../src/inputs'
 import {run} from '../src/main'
 
@@ -53,6 +54,11 @@ describe('run', () => {
 
   describe('when the run follows the happy path', () => {
     beforeEach(() => {
+      jest.spyOn(ApiClient.prototype, 'getJobDetails').mockImplementationOnce(
+        jest.fn(async () => {
+          return {'package-manager': 'npm_and_yarn'} as JobDetails
+        })
+      )
       context = new Context()
     })
 
@@ -70,6 +76,56 @@ describe('run', () => {
 
       expect(markJobAsProcessedSpy).not.toHaveBeenCalled()
       expect(reportJobErrorSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when an updaterImage is not specified', () => {
+    beforeEach(() => {
+      context = new Context()
+      context.payload = {
+        ...context.payload,
+        inputs: {
+          ...context.payload.inputs,
+          updaterImage: null
+        }
+      }
+      jest.spyOn(ImageService, 'pull')
+
+      jest.spyOn(ApiClient.prototype, 'getJobDetails').mockImplementationOnce(
+        jest.fn(async () => {
+          return {'package-manager': 'npm_and_yarn'} as JobDetails
+        })
+      )
+    })
+
+    test('it runs with the pinned image', async () => {
+      await run(context)
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(ImageService.pull).toHaveBeenCalledWith(
+        updaterImageName('npm_and_yarn')
+      )
+    })
+  })
+
+  describe('when an updaterImage is specified', () => {
+    beforeEach(() => {
+      context = new Context()
+      context.payload = {
+        ...context.payload,
+        inputs: {
+          ...context.payload.inputs,
+          updaterImage: 'alpine'
+        }
+      }
+      jest.spyOn(ImageService, 'pull')
+    })
+
+    test('it runs with the specified image', async () => {
+      await run(context)
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(ImageService.pull).toHaveBeenCalledWith('alpine')
     })
   })
 
@@ -185,6 +241,12 @@ describe('run', () => {
           )
         )
 
+      jest.spyOn(ApiClient.prototype, 'getJobDetails').mockImplementationOnce(
+        jest.fn(async () => {
+          return {'package-manager': 'npm_and_yarn'} as JobDetails
+        })
+      )
+
       context = new Context()
     })
 
@@ -218,7 +280,11 @@ describe('run', () => {
             Promise.reject(new Error('error pulling an image'))
           )
         )
-
+      jest.spyOn(ApiClient.prototype, 'getJobDetails').mockImplementationOnce(
+        jest.fn(async () => {
+          return {'package-manager': 'npm_and_yarn'} as JobDetails
+        })
+      )
       context = new Context()
     })
 
@@ -252,7 +318,11 @@ describe('run', () => {
             Promise.reject(new ContainerRuntimeError('the container melted'))
           )
         )
-
+      jest.spyOn(ApiClient.prototype, 'getJobDetails').mockImplementationOnce(
+        jest.fn(async () => {
+          return {'package-manager': 'npm_and_yarn'} as JobDetails
+        })
+      )
       context = new Context()
     })
 
@@ -286,7 +356,11 @@ describe('run', () => {
             Promise.reject(new Error('error running the update'))
           )
         )
-
+      jest.spyOn(ApiClient.prototype, 'getJobDetails').mockImplementationOnce(
+        jest.fn(async () => {
+          return {'package-manager': 'npm_and_yarn'} as JobDetails
+        })
+      )
       context = new Context()
     })
 
@@ -308,41 +382,6 @@ describe('run', () => {
         }
       })
       expect(markJobAsProcessedSpy).toHaveBeenCalled()
-    })
-  })
-
-  describe('when the file fetch step fails', () => {
-    beforeEach(() => {
-      jest
-        .spyOn(Updater.prototype, 'runUpdater')
-        .mockImplementationOnce(
-          jest.fn(async () =>
-            Promise.reject(
-              new UpdaterFetchError(
-                'No output.json created by the fetcher container'
-              )
-            )
-          )
-        )
-
-      context = new Context()
-    })
-
-    test('it fails the workflow', async () => {
-      await run(context)
-
-      expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'Dependabot was unable to retrieve the files required to perform the update'
-        )
-      )
-    })
-
-    test('it does not inform dependabot-api as the failed fetch step will have already reported in', async () => {
-      await run(context)
-
-      expect(markJobAsProcessedSpy).not.toHaveBeenCalled()
-      expect(reportJobErrorSpy).not.toHaveBeenCalled()
     })
   })
 })
