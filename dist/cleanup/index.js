@@ -140,7 +140,6 @@ const file_command_1 = __nccwpck_require__(717);
 const utils_1 = __nccwpck_require__(5278);
 const os = __importStar(__nccwpck_require__(2037));
 const path = __importStar(__nccwpck_require__(1017));
-const uuid_1 = __nccwpck_require__(5840);
 const oidc_utils_1 = __nccwpck_require__(8041);
 /**
  * The code to exit an action
@@ -170,20 +169,9 @@ function exportVariable(name, val) {
     process.env[name] = convertedVal;
     const filePath = process.env['GITHUB_ENV'] || '';
     if (filePath) {
-        const delimiter = `ghadelimiter_${uuid_1.v4()}`;
-        // These should realistically never happen, but just in case someone finds a way to exploit uuid generation let's not allow keys or values that contain the delimiter.
-        if (name.includes(delimiter)) {
-            throw new Error(`Unexpected input: name should not contain the delimiter "${delimiter}"`);
-        }
-        if (convertedVal.includes(delimiter)) {
-            throw new Error(`Unexpected input: value should not contain the delimiter "${delimiter}"`);
-        }
-        const commandValue = `${name}<<${delimiter}${os.EOL}${convertedVal}${os.EOL}${delimiter}`;
-        file_command_1.issueCommand('ENV', commandValue);
+        return file_command_1.issueFileCommand('ENV', file_command_1.prepareKeyValueMessage(name, val));
     }
-    else {
-        command_1.issueCommand('set-env', { name }, convertedVal);
-    }
+    command_1.issueCommand('set-env', { name }, convertedVal);
 }
 exports.exportVariable = exportVariable;
 /**
@@ -201,7 +189,7 @@ exports.setSecret = setSecret;
 function addPath(inputPath) {
     const filePath = process.env['GITHUB_PATH'] || '';
     if (filePath) {
-        file_command_1.issueCommand('PATH', inputPath);
+        file_command_1.issueFileCommand('PATH', inputPath);
     }
     else {
         command_1.issueCommand('add-path', {}, inputPath);
@@ -241,7 +229,10 @@ function getMultilineInput(name, options) {
     const inputs = getInput(name, options)
         .split('\n')
         .filter(x => x !== '');
-    return inputs;
+    if (options && options.trimWhitespace === false) {
+        return inputs;
+    }
+    return inputs.map(input => input.trim());
 }
 exports.getMultilineInput = getMultilineInput;
 /**
@@ -274,8 +265,12 @@ exports.getBooleanInput = getBooleanInput;
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function setOutput(name, value) {
+    const filePath = process.env['GITHUB_OUTPUT'] || '';
+    if (filePath) {
+        return file_command_1.issueFileCommand('OUTPUT', file_command_1.prepareKeyValueMessage(name, value));
+    }
     process.stdout.write(os.EOL);
-    command_1.issueCommand('set-output', { name }, value);
+    command_1.issueCommand('set-output', { name }, utils_1.toCommandValue(value));
 }
 exports.setOutput = setOutput;
 /**
@@ -404,7 +399,11 @@ exports.group = group;
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function saveState(name, value) {
-    command_1.issueCommand('save-state', { name }, value);
+    const filePath = process.env['GITHUB_STATE'] || '';
+    if (filePath) {
+        return file_command_1.issueFileCommand('STATE', file_command_1.prepareKeyValueMessage(name, value));
+    }
+    command_1.issueCommand('save-state', { name }, utils_1.toCommandValue(value));
 }
 exports.saveState = saveState;
 /**
@@ -470,13 +469,14 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.issueCommand = void 0;
+exports.prepareKeyValueMessage = exports.issueFileCommand = void 0;
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const fs = __importStar(__nccwpck_require__(7147));
 const os = __importStar(__nccwpck_require__(2037));
+const uuid_1 = __nccwpck_require__(5840);
 const utils_1 = __nccwpck_require__(5278);
-function issueCommand(command, message) {
+function issueFileCommand(command, message) {
     const filePath = process.env[`GITHUB_${command}`];
     if (!filePath) {
         throw new Error(`Unable to find environment variable for file command ${command}`);
@@ -488,7 +488,22 @@ function issueCommand(command, message) {
         encoding: 'utf8'
     });
 }
-exports.issueCommand = issueCommand;
+exports.issueFileCommand = issueFileCommand;
+function prepareKeyValueMessage(key, value) {
+    const delimiter = `ghadelimiter_${uuid_1.v4()}`;
+    const convertedValue = utils_1.toCommandValue(value);
+    // These should realistically never happen, but just in case someone finds a
+    // way to exploit uuid generation let's not allow keys or values that contain
+    // the delimiter.
+    if (key.includes(delimiter)) {
+        throw new Error(`Unexpected input: name should not contain the delimiter "${delimiter}"`);
+    }
+    if (convertedValue.includes(delimiter)) {
+        throw new Error(`Unexpected input: value should not contain the delimiter "${delimiter}"`);
+    }
+    return `${key}<<${delimiter}${os.EOL}${convertedValue}${os.EOL}${delimiter}`;
+}
+exports.prepareKeyValueMessage = prepareKeyValueMessage;
 //# sourceMappingURL=file-command.js.map
 
 /***/ }),
@@ -509,8 +524,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.OidcClient = void 0;
-const http_client_1 = __nccwpck_require__(1404);
-const auth_1 = __nccwpck_require__(6758);
+const http_client_1 = __nccwpck_require__(6255);
+const auth_1 = __nccwpck_require__(5526);
 const core_1 = __nccwpck_require__(2186);
 class OidcClient {
     static createHttpClient(allowRetry = true, maxRetry = 10) {
@@ -979,7 +994,7 @@ exports.toCommandProperties = toCommandProperties;
 
 /***/ }),
 
-/***/ 6758:
+/***/ 5526:
 /***/ (function(__unused_webpack_module, exports) {
 
 "use strict";
@@ -1067,7 +1082,7 @@ exports.PersonalAccessTokenCredentialHandler = PersonalAccessTokenCredentialHand
 
 /***/ }),
 
-/***/ 1404:
+/***/ 6255:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -1105,7 +1120,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.HttpClient = exports.isHttps = exports.HttpClientResponse = exports.HttpClientError = exports.getProxyUrl = exports.MediaTypes = exports.Headers = exports.HttpCodes = void 0;
 const http = __importStar(__nccwpck_require__(3685));
 const https = __importStar(__nccwpck_require__(5687));
-const pm = __importStar(__nccwpck_require__(2843));
+const pm = __importStar(__nccwpck_require__(9835));
 const tunnel = __importStar(__nccwpck_require__(4294));
 var HttpCodes;
 (function (HttpCodes) {
@@ -1679,7 +1694,7 @@ const lowercaseKeys = (obj) => Object.keys(obj).reduce((c, k) => ((c[k.toLowerCa
 
 /***/ }),
 
-/***/ 2843:
+/***/ 9835:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -1744,6 +1759,377 @@ function checkBypass(reqUrl) {
 }
 exports.checkBypass = checkBypass;
 //# sourceMappingURL=proxy.js.map
+
+/***/ }),
+
+/***/ 3358:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * @license
+ * Copyright 2020 Balena Ltd.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * ------------------------------------------------------------------------
+ *
+ * Copyright 2018 Zeit, Inc.
+ * Licensed under the MIT License. See file LICENSE.md for a full copy.
+ *
+ * ------------------------------------------------------------------------
+ */
+
+/**
+ * This module implements the [dockerignore
+ * spec](https://docs.docker.com/engine/reference/builder/#dockerignore-file),
+ * closely following Docker's (Moby) Golang implementation:
+ * https://github.com/moby/moby/blob/v19.03.8/builder/dockerignore/dockerignore.go
+ * https://github.com/moby/moby/blob/v19.03.8/pkg/fileutils/fileutils.go
+ * https://github.com/moby/moby/blob/v19.03.8/pkg/archive/archive.go#L825
+ *
+ * Something the spec is not clear about, but we discovered by reading source code
+ * and testing against the "docker build" command, is the handling of backslashes and
+ * forward slashes as path separators and escape characters in the .dockerignore file
+ * across platforms including Windows, Linux and macOS:
+ *
+ * * On Linux and macOS, only forward slashes can be used as path separators in the
+ *   .dockerignore file, and the backslash works as an escape character.
+ * * On Windows, both forward slashes and backslashes are allowed as path separators
+ *   in the .dockerignore file, and the backslash is not used as an escape character.
+ *
+ * This is consistent with how Windows works generally: both forward slashes and
+ * backslashes are accepted as path separators by the cmd.exe Command Prompt or
+ * PowerShell, and by library functions like the Golang filepath.Clean or the
+ * Node.js path.normalize.
+ *
+ * Similarly, path strings provided to the IgnoreBase.ignores() and IgnoreBase.filter()
+ * methods can use either forward slashes or backslashes as path separators on Windows,
+ * but only forward slashes are accepted as path separators on Linux and macOS.
+ */
+
+const path = __nccwpck_require__(1017);
+
+const factory = options => new IgnoreBase(options); // https://github.com/kaelzhang/node-ignore/blob/5.1.4/index.js#L538-L539
+// Fixes typescript module import
+
+
+factory.default = factory;
+module.exports = factory;
+
+function make_array(subject) {
+  return Array.isArray(subject) ? subject : [subject];
+}
+
+const REGEX_TRAILING_SLASH = /(?<=.)\/$/;
+const REGEX_TRAILING_BACKSLASH = /(?<=.)\\$/;
+const REGEX_TRAILING_PATH_SEP = path.sep === '\\' ? REGEX_TRAILING_BACKSLASH : REGEX_TRAILING_SLASH;
+const KEY_IGNORE = typeof Symbol !== 'undefined' ? Symbol.for('dockerignore') : 'dockerignore'; // An implementation of Go's filepath.Clean
+// https://golang.org/pkg/path/filepath/#Clean
+// https://github.com/golang/go/blob/master/src/path/filepath/path.go
+// Note that, like Go, on Windows this function converts forward slashes
+// to backslashes.
+
+function cleanPath(file) {
+  return path.normalize(file).replace(REGEX_TRAILING_PATH_SEP, '');
+} // Javascript port of Golang's filepath.ToSlash
+// https://golang.org/pkg/path/filepath/#ToSlash
+// https://github.com/golang/go/blob/master/src/path/filepath/path.go
+// Convert any OS-specific path separator to '/'. Backslash is converted
+// to forward slash on Windows, but not on Linux/macOS.
+// Note that both forward slashes and backslashes are valid path separators on
+// Windows. As a result, code such as `pattern.split(path.sep).join('/')` fails
+// on Windows when forward slashes are used as path separators.
+
+
+function toSlash(file) {
+  if (path.sep === '/') {
+    return file;
+  }
+
+  return file.replace(/\\/g, '/');
+} // Javascript port of Golang's filepath.FromSlash
+// https://github.com/golang/go/blob/master/src/path/filepath/path.go
+
+
+function fromSlash(file) {
+  if (path.sep === '/') {
+    return file;
+  }
+
+  return file.replace(/\//g, path.sep);
+}
+
+class IgnoreBase {
+  constructor({
+    // https://github.com/kaelzhang/node-ignore/blob/5.1.4/index.js#L372
+    ignorecase = true
+  } = {}) {
+    this._rules = [];
+    this._ignorecase = ignorecase;
+    this[KEY_IGNORE] = true;
+
+    this._initCache();
+  }
+
+  _initCache() {
+    this._cache = {};
+  } // @param {Array.<string>|string|Ignore} pattern
+
+
+  add(pattern) {
+    this._added = false;
+
+    if (typeof pattern === 'string') {
+      pattern = pattern.split(/\r?\n/g);
+    }
+
+    make_array(pattern).forEach(this._addPattern, this); // Some rules have just added to the ignore,
+    // making the behavior changed.
+
+    if (this._added) {
+      this._initCache();
+    }
+
+    return this;
+  } // legacy
+
+
+  addPattern(pattern) {
+    return this.add(pattern);
+  }
+
+  _addPattern(pattern) {
+    // https://github.com/kaelzhang/node-ignore/issues/32
+    if (pattern && pattern[KEY_IGNORE]) {
+      this._rules = this._rules.concat(pattern._rules);
+      this._added = true;
+      return;
+    }
+
+    if (this._checkPattern(pattern)) {
+      const rule = this._createRule(pattern.trim());
+
+      if (rule !== null) {
+        this._added = true;
+
+        this._rules.push(rule);
+      }
+    }
+  }
+
+  _checkPattern(pattern) {
+    // https://github.com/moby/moby/blob/v19.03.8/builder/dockerignore/dockerignore.go#L34-L40
+    return pattern && typeof pattern === 'string' && pattern.indexOf('#') !== 0 && pattern.trim() !== "";
+  }
+
+  filter(paths) {
+    return make_array(paths).filter(path => this._filter(path));
+  }
+
+  createFilter() {
+    return path => this._filter(path);
+  }
+
+  ignores(path) {
+    return !this._filter(path);
+  } // https://github.com/moby/moby/blob/v19.03.8/builder/dockerignore/dockerignore.go#L41-L53
+  // https://github.com/moby/moby/blob/v19.03.8/pkg/fileutils/fileutils.go#L29-L55
+
+
+  _createRule(pattern) {
+    const origin = pattern;
+    let negative = false; // > An optional prefix "!" which negates the pattern;
+    // https://github.com/moby/moby/blob/v19.03.8/builder/dockerignore/dockerignore.go#L43-L46
+
+    if (pattern[0] === '!') {
+      negative = true;
+      pattern = pattern.substring(1).trim();
+    } // https://github.com/moby/moby/blob/v19.03.8/builder/dockerignore/dockerignore.go#L47-L53
+
+
+    if (pattern.length > 0) {
+      pattern = cleanPath(pattern);
+      pattern = toSlash(pattern);
+
+      if (pattern.length > 1 && pattern[0] === '/') {
+        pattern = pattern.slice(1);
+      }
+    } // https://github.com/moby/moby/blob/v19.03.8/builder/dockerignore/dockerignore.go#L54-L55
+
+
+    if (negative) {
+      pattern = '!' + pattern;
+    } // https://github.com/moby/moby/blob/v19.03.8/pkg/fileutils/fileutils.go#L30
+
+
+    pattern = pattern.trim();
+
+    if (pattern === "") {
+      return null;
+    } // https://github.com/moby/moby/blob/v19.03.8/pkg/fileutils/fileutils.go#L34
+    // convert forward slashes to backslashes on Windows
+
+
+    pattern = cleanPath(pattern); // https://github.com/moby/moby/blob/v19.03.8/pkg/fileutils/fileutils.go#L36-L42
+
+    if (pattern[0] === '!') {
+      if (pattern.length === 1) {
+        return null;
+      }
+
+      negative = true;
+      pattern = pattern.substring(1);
+    } else {
+      negative = false;
+    }
+
+    return {
+      origin,
+      pattern,
+      // https://github.com/moby/moby/blob/v19.03.8/pkg/fileutils/fileutils.go#L54
+      dirs: pattern.split(path.sep),
+      negative
+    };
+  } // @returns `Boolean` true if the `path` is NOT ignored
+
+
+  _filter(path) {
+    if (!path) {
+      return false;
+    }
+
+    if (path in this._cache) {
+      return this._cache[path];
+    }
+
+    return this._cache[path] = this._test(path);
+  } // @returns {Boolean} true if a file is NOT ignored
+  // https://github.com/moby/moby/blob/v19.03.8/pkg/fileutils/fileutils.go#L62
+
+
+  _test(file) {
+    file = fromSlash(file); // equivalent to golang filepath.Dir() https://golang.org/src/path/filepath/path.go
+
+    const parentPath = cleanPath(path.dirname(file));
+    const parentPathDirs = parentPath.split(path.sep);
+    let matched = false;
+
+    this._rules.forEach(rule => {
+      let match = this._match(file, rule); // https://github.com/moby/moby/blob/v19.03.8/pkg/fileutils/fileutils.go#L80
+
+
+      if (!match && parentPath !== ".") {
+        // Check to see if the pattern matches one of our parent dirs.
+        if (rule.dirs.includes('**')) {
+          // Ah shucks! We have to test every possible parent path that has 
+          // a number of dirs _n_ where 
+          // `rule.dirs.filter(doubleStar).length <= _n_ <= parentPathDirs.length`
+          // since the ** can imply any number of directories including 0
+          for (let i = rule.dirs.filter(x => x !== '**').length; i <= parentPathDirs.length; i++) {
+            match = match || this._match(parentPathDirs.slice(0, i).join(path.sep), rule);
+          }
+        } else if (rule.dirs.length <= parentPathDirs.length) {
+          // https://github.com/moby/moby/blob/v19.03.8/pkg/fileutils/fileutils.go#L83
+          match = this._match(parentPathDirs.slice(0, rule.dirs.length).join(path.sep), rule);
+        }
+      }
+
+      if (match) {
+        matched = !rule.negative;
+      }
+    });
+
+    return !matched;
+  } // @returns {Boolean} true if a file is matched by a rule
+
+
+  _match(file, rule) {
+    return this._compile(rule).regexp.test(file);
+  } // https://github.com/moby/moby/blob/v19.03.8/pkg/fileutils/fileutils.go#L139
+
+
+  _compile(rule) {
+    if (rule.regexp) {
+      return rule;
+    }
+
+    let regStr = '^'; // Go through the pattern and convert it to a regexp.
+
+    let escapedSlash = path.sep === '\\' ? '\\\\' : path.sep;
+
+    for (let i = 0; i < rule.pattern.length; i++) {
+      const ch = rule.pattern[i];
+
+      if (ch === '*') {
+        if (rule.pattern[i + 1] === '*') {
+          // is some flavor of "**"
+          i++; // Treat **/ as ** so eat the "/"
+
+          if (rule.pattern[i + 1] === path.sep) {
+            i++;
+          }
+
+          if (rule.pattern[i + 1] === undefined) {
+            // is "**EOF" - to align with .gitignore just accept all
+            regStr += ".*";
+          } else {
+            // is "**"
+            // Note that this allows for any # of /'s (even 0) because
+            // the .* will eat everything, even /'s
+            regStr += `(.*${escapedSlash})?`;
+          }
+        } else {
+          // is "*" so map it to anything but "/"
+          regStr += `[^${escapedSlash}]*`;
+        }
+      } else if (ch === '?') {
+        // "?" is any char except "/"
+        regStr += `[^${escapedSlash}]`;
+      } else if (ch === '.' || ch === '$') {
+        // Escape some regexp special chars that have no meaning
+        // in golang's filepath.Match
+        regStr += `\\${ch}`;
+      } else if (ch === '\\') {
+        // escape next char. Note that a trailing \ in the pattern
+        // will be left alone (but need to escape it)
+        if (path.sep === '\\') {
+          // On windows map "\" to "\\", meaning an escaped backslash,
+          // and then just continue because filepath.Match on
+          // Windows doesn't allow escaping at all
+          regStr += escapedSlash;
+          continue;
+        }
+
+        if (rule.pattern[i + 1] !== undefined) {
+          regStr += '\\' + rule.pattern[i + 1];
+          i++;
+        } else {
+          regStr += '\\';
+        }
+      } else {
+        regStr += ch;
+      }
+    }
+
+    regStr += "$";
+    rule.regexp = new RegExp(regStr, this._ignorecase ? 'i' : '');
+    return rule;
+  }
+
+}
+
 
 /***/ }),
 
@@ -3028,502 +3414,6 @@ module.exports = {
 
 /***/ }),
 
-/***/ 3664:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-const { Buffer } = __nccwpck_require__(4300)
-const symbol = Symbol.for('BufferList')
-
-function BufferList (buf) {
-  if (!(this instanceof BufferList)) {
-    return new BufferList(buf)
-  }
-
-  BufferList._init.call(this, buf)
-}
-
-BufferList._init = function _init (buf) {
-  Object.defineProperty(this, symbol, { value: true })
-
-  this._bufs = []
-  this.length = 0
-
-  if (buf) {
-    this.append(buf)
-  }
-}
-
-BufferList.prototype._new = function _new (buf) {
-  return new BufferList(buf)
-}
-
-BufferList.prototype._offset = function _offset (offset) {
-  if (offset === 0) {
-    return [0, 0]
-  }
-
-  let tot = 0
-
-  for (let i = 0; i < this._bufs.length; i++) {
-    const _t = tot + this._bufs[i].length
-    if (offset < _t || i === this._bufs.length - 1) {
-      return [i, offset - tot]
-    }
-    tot = _t
-  }
-}
-
-BufferList.prototype._reverseOffset = function (blOffset) {
-  const bufferId = blOffset[0]
-  let offset = blOffset[1]
-
-  for (let i = 0; i < bufferId; i++) {
-    offset += this._bufs[i].length
-  }
-
-  return offset
-}
-
-BufferList.prototype.get = function get (index) {
-  if (index > this.length || index < 0) {
-    return undefined
-  }
-
-  const offset = this._offset(index)
-
-  return this._bufs[offset[0]][offset[1]]
-}
-
-BufferList.prototype.slice = function slice (start, end) {
-  if (typeof start === 'number' && start < 0) {
-    start += this.length
-  }
-
-  if (typeof end === 'number' && end < 0) {
-    end += this.length
-  }
-
-  return this.copy(null, 0, start, end)
-}
-
-BufferList.prototype.copy = function copy (dst, dstStart, srcStart, srcEnd) {
-  if (typeof srcStart !== 'number' || srcStart < 0) {
-    srcStart = 0
-  }
-
-  if (typeof srcEnd !== 'number' || srcEnd > this.length) {
-    srcEnd = this.length
-  }
-
-  if (srcStart >= this.length) {
-    return dst || Buffer.alloc(0)
-  }
-
-  if (srcEnd <= 0) {
-    return dst || Buffer.alloc(0)
-  }
-
-  const copy = !!dst
-  const off = this._offset(srcStart)
-  const len = srcEnd - srcStart
-  let bytes = len
-  let bufoff = (copy && dstStart) || 0
-  let start = off[1]
-
-  // copy/slice everything
-  if (srcStart === 0 && srcEnd === this.length) {
-    if (!copy) {
-      // slice, but full concat if multiple buffers
-      return this._bufs.length === 1
-        ? this._bufs[0]
-        : Buffer.concat(this._bufs, this.length)
-    }
-
-    // copy, need to copy individual buffers
-    for (let i = 0; i < this._bufs.length; i++) {
-      this._bufs[i].copy(dst, bufoff)
-      bufoff += this._bufs[i].length
-    }
-
-    return dst
-  }
-
-  // easy, cheap case where it's a subset of one of the buffers
-  if (bytes <= this._bufs[off[0]].length - start) {
-    return copy
-      ? this._bufs[off[0]].copy(dst, dstStart, start, start + bytes)
-      : this._bufs[off[0]].slice(start, start + bytes)
-  }
-
-  if (!copy) {
-    // a slice, we need something to copy in to
-    dst = Buffer.allocUnsafe(len)
-  }
-
-  for (let i = off[0]; i < this._bufs.length; i++) {
-    const l = this._bufs[i].length - start
-
-    if (bytes > l) {
-      this._bufs[i].copy(dst, bufoff, start)
-      bufoff += l
-    } else {
-      this._bufs[i].copy(dst, bufoff, start, start + bytes)
-      bufoff += l
-      break
-    }
-
-    bytes -= l
-
-    if (start) {
-      start = 0
-    }
-  }
-
-  // safeguard so that we don't return uninitialized memory
-  if (dst.length > bufoff) return dst.slice(0, bufoff)
-
-  return dst
-}
-
-BufferList.prototype.shallowSlice = function shallowSlice (start, end) {
-  start = start || 0
-  end = typeof end !== 'number' ? this.length : end
-
-  if (start < 0) {
-    start += this.length
-  }
-
-  if (end < 0) {
-    end += this.length
-  }
-
-  if (start === end) {
-    return this._new()
-  }
-
-  const startOffset = this._offset(start)
-  const endOffset = this._offset(end)
-  const buffers = this._bufs.slice(startOffset[0], endOffset[0] + 1)
-
-  if (endOffset[1] === 0) {
-    buffers.pop()
-  } else {
-    buffers[buffers.length - 1] = buffers[buffers.length - 1].slice(0, endOffset[1])
-  }
-
-  if (startOffset[1] !== 0) {
-    buffers[0] = buffers[0].slice(startOffset[1])
-  }
-
-  return this._new(buffers)
-}
-
-BufferList.prototype.toString = function toString (encoding, start, end) {
-  return this.slice(start, end).toString(encoding)
-}
-
-BufferList.prototype.consume = function consume (bytes) {
-  // first, normalize the argument, in accordance with how Buffer does it
-  bytes = Math.trunc(bytes)
-  // do nothing if not a positive number
-  if (Number.isNaN(bytes) || bytes <= 0) return this
-
-  while (this._bufs.length) {
-    if (bytes >= this._bufs[0].length) {
-      bytes -= this._bufs[0].length
-      this.length -= this._bufs[0].length
-      this._bufs.shift()
-    } else {
-      this._bufs[0] = this._bufs[0].slice(bytes)
-      this.length -= bytes
-      break
-    }
-  }
-
-  return this
-}
-
-BufferList.prototype.duplicate = function duplicate () {
-  const copy = this._new()
-
-  for (let i = 0; i < this._bufs.length; i++) {
-    copy.append(this._bufs[i])
-  }
-
-  return copy
-}
-
-BufferList.prototype.append = function append (buf) {
-  if (buf == null) {
-    return this
-  }
-
-  if (buf.buffer) {
-    // append a view of the underlying ArrayBuffer
-    this._appendBuffer(Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength))
-  } else if (Array.isArray(buf)) {
-    for (let i = 0; i < buf.length; i++) {
-      this.append(buf[i])
-    }
-  } else if (this._isBufferList(buf)) {
-    // unwrap argument into individual BufferLists
-    for (let i = 0; i < buf._bufs.length; i++) {
-      this.append(buf._bufs[i])
-    }
-  } else {
-    // coerce number arguments to strings, since Buffer(number) does
-    // uninitialized memory allocation
-    if (typeof buf === 'number') {
-      buf = buf.toString()
-    }
-
-    this._appendBuffer(Buffer.from(buf))
-  }
-
-  return this
-}
-
-BufferList.prototype._appendBuffer = function appendBuffer (buf) {
-  this._bufs.push(buf)
-  this.length += buf.length
-}
-
-BufferList.prototype.indexOf = function (search, offset, encoding) {
-  if (encoding === undefined && typeof offset === 'string') {
-    encoding = offset
-    offset = undefined
-  }
-
-  if (typeof search === 'function' || Array.isArray(search)) {
-    throw new TypeError('The "value" argument must be one of type string, Buffer, BufferList, or Uint8Array.')
-  } else if (typeof search === 'number') {
-    search = Buffer.from([search])
-  } else if (typeof search === 'string') {
-    search = Buffer.from(search, encoding)
-  } else if (this._isBufferList(search)) {
-    search = search.slice()
-  } else if (Array.isArray(search.buffer)) {
-    search = Buffer.from(search.buffer, search.byteOffset, search.byteLength)
-  } else if (!Buffer.isBuffer(search)) {
-    search = Buffer.from(search)
-  }
-
-  offset = Number(offset || 0)
-
-  if (isNaN(offset)) {
-    offset = 0
-  }
-
-  if (offset < 0) {
-    offset = this.length + offset
-  }
-
-  if (offset < 0) {
-    offset = 0
-  }
-
-  if (search.length === 0) {
-    return offset > this.length ? this.length : offset
-  }
-
-  const blOffset = this._offset(offset)
-  let blIndex = blOffset[0] // index of which internal buffer we're working on
-  let buffOffset = blOffset[1] // offset of the internal buffer we're working on
-
-  // scan over each buffer
-  for (; blIndex < this._bufs.length; blIndex++) {
-    const buff = this._bufs[blIndex]
-
-    while (buffOffset < buff.length) {
-      const availableWindow = buff.length - buffOffset
-
-      if (availableWindow >= search.length) {
-        const nativeSearchResult = buff.indexOf(search, buffOffset)
-
-        if (nativeSearchResult !== -1) {
-          return this._reverseOffset([blIndex, nativeSearchResult])
-        }
-
-        buffOffset = buff.length - search.length + 1 // end of native search window
-      } else {
-        const revOffset = this._reverseOffset([blIndex, buffOffset])
-
-        if (this._match(revOffset, search)) {
-          return revOffset
-        }
-
-        buffOffset++
-      }
-    }
-
-    buffOffset = 0
-  }
-
-  return -1
-}
-
-BufferList.prototype._match = function (offset, search) {
-  if (this.length - offset < search.length) {
-    return false
-  }
-
-  for (let searchOffset = 0; searchOffset < search.length; searchOffset++) {
-    if (this.get(offset + searchOffset) !== search[searchOffset]) {
-      return false
-    }
-  }
-  return true
-}
-
-;(function () {
-  const methods = {
-    readDoubleBE: 8,
-    readDoubleLE: 8,
-    readFloatBE: 4,
-    readFloatLE: 4,
-    readInt32BE: 4,
-    readInt32LE: 4,
-    readUInt32BE: 4,
-    readUInt32LE: 4,
-    readInt16BE: 2,
-    readInt16LE: 2,
-    readUInt16BE: 2,
-    readUInt16LE: 2,
-    readInt8: 1,
-    readUInt8: 1,
-    readIntBE: null,
-    readIntLE: null,
-    readUIntBE: null,
-    readUIntLE: null
-  }
-
-  for (const m in methods) {
-    (function (m) {
-      if (methods[m] === null) {
-        BufferList.prototype[m] = function (offset, byteLength) {
-          return this.slice(offset, offset + byteLength)[m](0, byteLength)
-        }
-      } else {
-        BufferList.prototype[m] = function (offset = 0) {
-          return this.slice(offset, offset + methods[m])[m](0)
-        }
-      }
-    }(m))
-  }
-}())
-
-// Used internally by the class and also as an indicator of this object being
-// a `BufferList`. It's not possible to use `instanceof BufferList` in a browser
-// environment because there could be multiple different copies of the
-// BufferList class and some `BufferList`s might be `BufferList`s.
-BufferList.prototype._isBufferList = function _isBufferList (b) {
-  return b instanceof BufferList || BufferList.isBufferList(b)
-}
-
-BufferList.isBufferList = function isBufferList (b) {
-  return b != null && b[symbol]
-}
-
-module.exports = BufferList
-
-
-/***/ }),
-
-/***/ 336:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-const DuplexStream = (__nccwpck_require__(1642).Duplex)
-const inherits = __nccwpck_require__(4124)
-const BufferList = __nccwpck_require__(3664)
-
-function BufferListStream (callback) {
-  if (!(this instanceof BufferListStream)) {
-    return new BufferListStream(callback)
-  }
-
-  if (typeof callback === 'function') {
-    this._callback = callback
-
-    const piper = function piper (err) {
-      if (this._callback) {
-        this._callback(err)
-        this._callback = null
-      }
-    }.bind(this)
-
-    this.on('pipe', function onPipe (src) {
-      src.on('error', piper)
-    })
-    this.on('unpipe', function onUnpipe (src) {
-      src.removeListener('error', piper)
-    })
-
-    callback = null
-  }
-
-  BufferList._init.call(this, callback)
-  DuplexStream.call(this)
-}
-
-inherits(BufferListStream, DuplexStream)
-Object.assign(BufferListStream.prototype, BufferList.prototype)
-
-BufferListStream.prototype._new = function _new (callback) {
-  return new BufferListStream(callback)
-}
-
-BufferListStream.prototype._write = function _write (buf, encoding, callback) {
-  this._appendBuffer(buf)
-
-  if (typeof callback === 'function') {
-    callback()
-  }
-}
-
-BufferListStream.prototype._read = function _read (size) {
-  if (!this.length) {
-    return this.push(null)
-  }
-
-  size = Math.min(size, this.length)
-  this.push(this.slice(0, size))
-  this.consume(size)
-}
-
-BufferListStream.prototype.end = function end (chunk) {
-  DuplexStream.prototype.end.call(this, chunk)
-
-  if (this._callback) {
-    this._callback(null, this.slice())
-    this._callback = null
-  }
-}
-
-BufferListStream.prototype._destroy = function _destroy (err, cb) {
-  this._bufs.length = 0
-  this.length = 0
-  cb(err)
-}
-
-BufferListStream.prototype._isBufferList = function _isBufferList (b) {
-  return b instanceof BufferListStream || b instanceof BufferList || BufferListStream.isBufferList(b)
-}
-
-BufferListStream.isBufferList = BufferList.isBufferList
-
-module.exports = BufferListStream
-module.exports.BufferListStream = BufferListStream
-module.exports.BufferList = BufferList
-
-
-/***/ }),
-
 /***/ 9051:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -4024,7 +3914,7 @@ function setup(env) {
 
 	/**
 	* Selects a color for a debug namespace
-	* @param {String} namespace The namespace string for the for the debug instance to be colored
+	* @param {String} namespace The namespace string for the debug instance to be colored
 	* @return {Number|String} An ANSI color code for the given namespace
 	* @api private
 	*/
@@ -4050,6 +3940,8 @@ function setup(env) {
 	function createDebug(namespace) {
 		let prevTime;
 		let enableOverride = null;
+		let namespacesCache;
+		let enabledCache;
 
 		function debug(...args) {
 			// Disabled?
@@ -4110,7 +4002,17 @@ function setup(env) {
 		Object.defineProperty(debug, 'enabled', {
 			enumerable: true,
 			configurable: false,
-			get: () => enableOverride === null ? createDebug.enabled(namespace) : enableOverride,
+			get: () => {
+				if (enableOverride !== null) {
+					return enableOverride;
+				}
+				if (namespacesCache !== createDebug.namespaces) {
+					namespacesCache = createDebug.namespaces;
+					enabledCache = createDebug.enabled(namespace);
+				}
+
+				return enabledCache;
+			},
 			set: v => {
 				enableOverride = v;
 			}
@@ -4139,6 +4041,7 @@ function setup(env) {
 	*/
 	function enable(namespaces) {
 		createDebug.save(namespaces);
+		createDebug.namespaces = namespaces;
 
 		createDebug.names = [];
 		createDebug.skips = [];
@@ -4156,7 +4059,7 @@ function setup(env) {
 			namespaces = split[i].replace(/\*/g, '.*?');
 
 			if (namespaces[0] === '-') {
-				createDebug.skips.push(new RegExp('^' + namespaces.substr(1) + '$'));
+				createDebug.skips.push(new RegExp('^' + namespaces.slice(1) + '$'));
 			} else {
 				createDebug.names.push(new RegExp('^' + namespaces + '$'));
 			}
@@ -5706,6 +5609,7 @@ Container.prototype.createCheckpoint = function(opts, callback) {
     allowEmpty: true,
     statusCodes: {
       200: true, //unofficial, but proxies may return it
+      201: true,
       204: true,
       404: 'no such container',
       500: 'server error'
@@ -6480,8 +6384,6 @@ module.exports = Container;
 
 var EventEmitter = (__nccwpck_require__(2361).EventEmitter),
   Modem = __nccwpck_require__(6042),
-  tar = __nccwpck_require__(366),
-  zlib = __nccwpck_require__(9796),
   Container = __nccwpck_require__(5815),
   Image = __nccwpck_require__(6689),
   Volume = __nccwpck_require__(4877),
@@ -6738,35 +6640,40 @@ Docker.prototype.buildImage = function(file, opts, callback) {
     opts = null;
   }
 
-  function build(file) {
-    var optsf = {
-      path: '/build?',
-      method: 'POST',
-      file: file,
-      options: opts,
-      abortSignal: opts && opts.abortSignal,
-      isStream: true,
-      statusCodes: {
-        200: true,
-        500: 'server error'
-      }
-    };
+  var optsf = {
+    path: '/build?',
+    method: 'POST',
+    file: undefined,
+    options: opts,
+    abortSignal: opts && opts.abortSignal,
+    isStream: true,
+    statusCodes: {
+      200: true,
+      500: 'server error'
+    }
+  };
 
-    if (opts) {
-      if (opts.registryconfig) {
-        optsf.registryconfig = optsf.options.registryconfig;
-        delete optsf.options.registryconfig;
-      }
-
-      //undocumented?
-      if (opts.authconfig) {
-        optsf.authconfig = optsf.options.authconfig;
-        delete optsf.options.authconfig;
-      }
+  if (opts) {
+    if (opts.registryconfig) {
+      optsf.registryconfig = optsf.options.registryconfig;
+      delete optsf.options.registryconfig;
     }
 
-    if (callback === undefined) {
+    //undocumented?
+    if (opts.authconfig) {
+      optsf.authconfig = optsf.options.authconfig;
+      delete optsf.options.authconfig;
+    }
+  }
+
+  if (callback === undefined) {
+    const prepareCtxPromise = new self.modem.Promise(function(resolve, _) {
+      util.prepareBuildContext(file, resolve)
+    });
+
+    return prepareCtxPromise.then((ctx)=> {
       return new self.modem.Promise(function(resolve, reject) {
+        optsf.file = ctx;
         self.modem.dial(optsf, function(err, data) {
           if (err) {
             return reject(err);
@@ -6774,20 +6681,14 @@ Docker.prototype.buildImage = function(file, opts, callback) {
           resolve(data);
         });
       });
-    } else {
+    })
+  } else {
+    util.prepareBuildContext(file, (ctx) => {
+      optsf.file = ctx;
       self.modem.dial(optsf, function(err, data) {
         callback(err, data);
       });
-    }
-  }
-
-  if (file && file.context) {
-    var pack = tar.pack(file.context, {
-      entries: file.src
-    });
-    return build(pack.pipe(zlib.createGzip()));
-  } else {
-    return build(file);
+    })
   }
 };
 
@@ -9879,7 +9780,13 @@ module.exports = Task;
 /***/ }),
 
 /***/ 1604:
-/***/ ((module) => {
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var DockerIgnore = __nccwpck_require__(3358);
+var fs = __nccwpck_require__(7147);
+var path = __nccwpck_require__(1017);
+var tar = __nccwpck_require__(366);
+var zlib = __nccwpck_require__(9796);
 
 // https://github.com/HenrikJoreteg/extend-object/blob/v0.1.0/extend-object.js
 
@@ -9951,6 +9858,36 @@ module.exports.parseRepositoryTag = function(input) {
     repository: input
   };
 };
+
+
+module.exports.prepareBuildContext = function(file, next) {
+  if (file && file.context) {
+    fs.readFile(path.join(file.context, '.dockerignore'), (err, data) => {
+      let ignoreFn;
+      let filterFn;
+
+      if (!err) {
+        const dockerIgnore = DockerIgnore({ ignorecase: false }).add(data.toString());
+
+        filterFn = dockerIgnore.createFilter();
+        ignoreFn = (path) => {
+          return !filterFn(path);
+        }
+      }
+
+      const entries = file.src.slice() || []
+
+      const pack = tar.pack(file.context, {
+        entries: filterFn ? entries.filter(filterFn) : entries,
+        ignore: ignoreFn // Only works on directories
+      });
+
+      next(pack.pipe(zlib.createGzip()));
+    })
+  } else {
+    next(file);
+  }
+}
 
 
 /***/ }),
@@ -33056,7 +32993,7 @@ module.exports = {
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 var chownr = __nccwpck_require__(9051)
-var tar = __nccwpck_require__(2283)
+var tar = __nccwpck_require__(1260)
 var pump = __nccwpck_require__(8341)
 var mkdirp = __nccwpck_require__(7614)
 var fs = __nccwpck_require__(7147)
@@ -33407,12 +33344,508 @@ function mkdirfix (name, opts, cb) {
 
 /***/ }),
 
-/***/ 7882:
+/***/ 1515:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const { Buffer } = __nccwpck_require__(4300)
+const symbol = Symbol.for('BufferList')
+
+function BufferList (buf) {
+  if (!(this instanceof BufferList)) {
+    return new BufferList(buf)
+  }
+
+  BufferList._init.call(this, buf)
+}
+
+BufferList._init = function _init (buf) {
+  Object.defineProperty(this, symbol, { value: true })
+
+  this._bufs = []
+  this.length = 0
+
+  if (buf) {
+    this.append(buf)
+  }
+}
+
+BufferList.prototype._new = function _new (buf) {
+  return new BufferList(buf)
+}
+
+BufferList.prototype._offset = function _offset (offset) {
+  if (offset === 0) {
+    return [0, 0]
+  }
+
+  let tot = 0
+
+  for (let i = 0; i < this._bufs.length; i++) {
+    const _t = tot + this._bufs[i].length
+    if (offset < _t || i === this._bufs.length - 1) {
+      return [i, offset - tot]
+    }
+    tot = _t
+  }
+}
+
+BufferList.prototype._reverseOffset = function (blOffset) {
+  const bufferId = blOffset[0]
+  let offset = blOffset[1]
+
+  for (let i = 0; i < bufferId; i++) {
+    offset += this._bufs[i].length
+  }
+
+  return offset
+}
+
+BufferList.prototype.get = function get (index) {
+  if (index > this.length || index < 0) {
+    return undefined
+  }
+
+  const offset = this._offset(index)
+
+  return this._bufs[offset[0]][offset[1]]
+}
+
+BufferList.prototype.slice = function slice (start, end) {
+  if (typeof start === 'number' && start < 0) {
+    start += this.length
+  }
+
+  if (typeof end === 'number' && end < 0) {
+    end += this.length
+  }
+
+  return this.copy(null, 0, start, end)
+}
+
+BufferList.prototype.copy = function copy (dst, dstStart, srcStart, srcEnd) {
+  if (typeof srcStart !== 'number' || srcStart < 0) {
+    srcStart = 0
+  }
+
+  if (typeof srcEnd !== 'number' || srcEnd > this.length) {
+    srcEnd = this.length
+  }
+
+  if (srcStart >= this.length) {
+    return dst || Buffer.alloc(0)
+  }
+
+  if (srcEnd <= 0) {
+    return dst || Buffer.alloc(0)
+  }
+
+  const copy = !!dst
+  const off = this._offset(srcStart)
+  const len = srcEnd - srcStart
+  let bytes = len
+  let bufoff = (copy && dstStart) || 0
+  let start = off[1]
+
+  // copy/slice everything
+  if (srcStart === 0 && srcEnd === this.length) {
+    if (!copy) {
+      // slice, but full concat if multiple buffers
+      return this._bufs.length === 1
+        ? this._bufs[0]
+        : Buffer.concat(this._bufs, this.length)
+    }
+
+    // copy, need to copy individual buffers
+    for (let i = 0; i < this._bufs.length; i++) {
+      this._bufs[i].copy(dst, bufoff)
+      bufoff += this._bufs[i].length
+    }
+
+    return dst
+  }
+
+  // easy, cheap case where it's a subset of one of the buffers
+  if (bytes <= this._bufs[off[0]].length - start) {
+    return copy
+      ? this._bufs[off[0]].copy(dst, dstStart, start, start + bytes)
+      : this._bufs[off[0]].slice(start, start + bytes)
+  }
+
+  if (!copy) {
+    // a slice, we need something to copy in to
+    dst = Buffer.allocUnsafe(len)
+  }
+
+  for (let i = off[0]; i < this._bufs.length; i++) {
+    const l = this._bufs[i].length - start
+
+    if (bytes > l) {
+      this._bufs[i].copy(dst, bufoff, start)
+      bufoff += l
+    } else {
+      this._bufs[i].copy(dst, bufoff, start, start + bytes)
+      bufoff += l
+      break
+    }
+
+    bytes -= l
+
+    if (start) {
+      start = 0
+    }
+  }
+
+  // safeguard so that we don't return uninitialized memory
+  if (dst.length > bufoff) return dst.slice(0, bufoff)
+
+  return dst
+}
+
+BufferList.prototype.shallowSlice = function shallowSlice (start, end) {
+  start = start || 0
+  end = typeof end !== 'number' ? this.length : end
+
+  if (start < 0) {
+    start += this.length
+  }
+
+  if (end < 0) {
+    end += this.length
+  }
+
+  if (start === end) {
+    return this._new()
+  }
+
+  const startOffset = this._offset(start)
+  const endOffset = this._offset(end)
+  const buffers = this._bufs.slice(startOffset[0], endOffset[0] + 1)
+
+  if (endOffset[1] === 0) {
+    buffers.pop()
+  } else {
+    buffers[buffers.length - 1] = buffers[buffers.length - 1].slice(0, endOffset[1])
+  }
+
+  if (startOffset[1] !== 0) {
+    buffers[0] = buffers[0].slice(startOffset[1])
+  }
+
+  return this._new(buffers)
+}
+
+BufferList.prototype.toString = function toString (encoding, start, end) {
+  return this.slice(start, end).toString(encoding)
+}
+
+BufferList.prototype.consume = function consume (bytes) {
+  // first, normalize the argument, in accordance with how Buffer does it
+  bytes = Math.trunc(bytes)
+  // do nothing if not a positive number
+  if (Number.isNaN(bytes) || bytes <= 0) return this
+
+  while (this._bufs.length) {
+    if (bytes >= this._bufs[0].length) {
+      bytes -= this._bufs[0].length
+      this.length -= this._bufs[0].length
+      this._bufs.shift()
+    } else {
+      this._bufs[0] = this._bufs[0].slice(bytes)
+      this.length -= bytes
+      break
+    }
+  }
+
+  return this
+}
+
+BufferList.prototype.duplicate = function duplicate () {
+  const copy = this._new()
+
+  for (let i = 0; i < this._bufs.length; i++) {
+    copy.append(this._bufs[i])
+  }
+
+  return copy
+}
+
+BufferList.prototype.append = function append (buf) {
+  if (buf == null) {
+    return this
+  }
+
+  if (buf.buffer) {
+    // append a view of the underlying ArrayBuffer
+    this._appendBuffer(Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength))
+  } else if (Array.isArray(buf)) {
+    for (let i = 0; i < buf.length; i++) {
+      this.append(buf[i])
+    }
+  } else if (this._isBufferList(buf)) {
+    // unwrap argument into individual BufferLists
+    for (let i = 0; i < buf._bufs.length; i++) {
+      this.append(buf._bufs[i])
+    }
+  } else {
+    // coerce number arguments to strings, since Buffer(number) does
+    // uninitialized memory allocation
+    if (typeof buf === 'number') {
+      buf = buf.toString()
+    }
+
+    this._appendBuffer(Buffer.from(buf))
+  }
+
+  return this
+}
+
+BufferList.prototype._appendBuffer = function appendBuffer (buf) {
+  this._bufs.push(buf)
+  this.length += buf.length
+}
+
+BufferList.prototype.indexOf = function (search, offset, encoding) {
+  if (encoding === undefined && typeof offset === 'string') {
+    encoding = offset
+    offset = undefined
+  }
+
+  if (typeof search === 'function' || Array.isArray(search)) {
+    throw new TypeError('The "value" argument must be one of type string, Buffer, BufferList, or Uint8Array.')
+  } else if (typeof search === 'number') {
+    search = Buffer.from([search])
+  } else if (typeof search === 'string') {
+    search = Buffer.from(search, encoding)
+  } else if (this._isBufferList(search)) {
+    search = search.slice()
+  } else if (Array.isArray(search.buffer)) {
+    search = Buffer.from(search.buffer, search.byteOffset, search.byteLength)
+  } else if (!Buffer.isBuffer(search)) {
+    search = Buffer.from(search)
+  }
+
+  offset = Number(offset || 0)
+
+  if (isNaN(offset)) {
+    offset = 0
+  }
+
+  if (offset < 0) {
+    offset = this.length + offset
+  }
+
+  if (offset < 0) {
+    offset = 0
+  }
+
+  if (search.length === 0) {
+    return offset > this.length ? this.length : offset
+  }
+
+  const blOffset = this._offset(offset)
+  let blIndex = blOffset[0] // index of which internal buffer we're working on
+  let buffOffset = blOffset[1] // offset of the internal buffer we're working on
+
+  // scan over each buffer
+  for (; blIndex < this._bufs.length; blIndex++) {
+    const buff = this._bufs[blIndex]
+
+    while (buffOffset < buff.length) {
+      const availableWindow = buff.length - buffOffset
+
+      if (availableWindow >= search.length) {
+        const nativeSearchResult = buff.indexOf(search, buffOffset)
+
+        if (nativeSearchResult !== -1) {
+          return this._reverseOffset([blIndex, nativeSearchResult])
+        }
+
+        buffOffset = buff.length - search.length + 1 // end of native search window
+      } else {
+        const revOffset = this._reverseOffset([blIndex, buffOffset])
+
+        if (this._match(revOffset, search)) {
+          return revOffset
+        }
+
+        buffOffset++
+      }
+    }
+
+    buffOffset = 0
+  }
+
+  return -1
+}
+
+BufferList.prototype._match = function (offset, search) {
+  if (this.length - offset < search.length) {
+    return false
+  }
+
+  for (let searchOffset = 0; searchOffset < search.length; searchOffset++) {
+    if (this.get(offset + searchOffset) !== search[searchOffset]) {
+      return false
+    }
+  }
+  return true
+}
+
+;(function () {
+  const methods = {
+    readDoubleBE: 8,
+    readDoubleLE: 8,
+    readFloatBE: 4,
+    readFloatLE: 4,
+    readInt32BE: 4,
+    readInt32LE: 4,
+    readUInt32BE: 4,
+    readUInt32LE: 4,
+    readInt16BE: 2,
+    readInt16LE: 2,
+    readUInt16BE: 2,
+    readUInt16LE: 2,
+    readInt8: 1,
+    readUInt8: 1,
+    readIntBE: null,
+    readIntLE: null,
+    readUIntBE: null,
+    readUIntLE: null
+  }
+
+  for (const m in methods) {
+    (function (m) {
+      if (methods[m] === null) {
+        BufferList.prototype[m] = function (offset, byteLength) {
+          return this.slice(offset, offset + byteLength)[m](0, byteLength)
+        }
+      } else {
+        BufferList.prototype[m] = function (offset = 0) {
+          return this.slice(offset, offset + methods[m])[m](0)
+        }
+      }
+    }(m))
+  }
+}())
+
+// Used internally by the class and also as an indicator of this object being
+// a `BufferList`. It's not possible to use `instanceof BufferList` in a browser
+// environment because there could be multiple different copies of the
+// BufferList class and some `BufferList`s might be `BufferList`s.
+BufferList.prototype._isBufferList = function _isBufferList (b) {
+  return b instanceof BufferList || BufferList.isBufferList(b)
+}
+
+BufferList.isBufferList = function isBufferList (b) {
+  return b != null && b[symbol]
+}
+
+module.exports = BufferList
+
+
+/***/ }),
+
+/***/ 6136:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const DuplexStream = (__nccwpck_require__(1642).Duplex)
+const inherits = __nccwpck_require__(4124)
+const BufferList = __nccwpck_require__(1515)
+
+function BufferListStream (callback) {
+  if (!(this instanceof BufferListStream)) {
+    return new BufferListStream(callback)
+  }
+
+  if (typeof callback === 'function') {
+    this._callback = callback
+
+    const piper = function piper (err) {
+      if (this._callback) {
+        this._callback(err)
+        this._callback = null
+      }
+    }.bind(this)
+
+    this.on('pipe', function onPipe (src) {
+      src.on('error', piper)
+    })
+    this.on('unpipe', function onUnpipe (src) {
+      src.removeListener('error', piper)
+    })
+
+    callback = null
+  }
+
+  BufferList._init.call(this, callback)
+  DuplexStream.call(this)
+}
+
+inherits(BufferListStream, DuplexStream)
+Object.assign(BufferListStream.prototype, BufferList.prototype)
+
+BufferListStream.prototype._new = function _new (callback) {
+  return new BufferListStream(callback)
+}
+
+BufferListStream.prototype._write = function _write (buf, encoding, callback) {
+  this._appendBuffer(buf)
+
+  if (typeof callback === 'function') {
+    callback()
+  }
+}
+
+BufferListStream.prototype._read = function _read (size) {
+  if (!this.length) {
+    return this.push(null)
+  }
+
+  size = Math.min(size, this.length)
+  this.push(this.slice(0, size))
+  this.consume(size)
+}
+
+BufferListStream.prototype.end = function end (chunk) {
+  DuplexStream.prototype.end.call(this, chunk)
+
+  if (this._callback) {
+    this._callback(null, this.slice())
+    this._callback = null
+  }
+}
+
+BufferListStream.prototype._destroy = function _destroy (err, cb) {
+  this._bufs.length = 0
+  this.length = 0
+  cb(err)
+}
+
+BufferListStream.prototype._isBufferList = function _isBufferList (b) {
+  return b instanceof BufferListStream || b instanceof BufferList || BufferListStream.isBufferList(b)
+}
+
+BufferListStream.isBufferList = BufferList.isBufferList
+
+module.exports = BufferListStream
+module.exports.BufferListStream = BufferListStream
+module.exports.BufferList = BufferList
+
+
+/***/ }),
+
+/***/ 9545:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var util = __nccwpck_require__(3837)
-var bl = __nccwpck_require__(336)
-var headers = __nccwpck_require__(8860)
+var bl = __nccwpck_require__(6136)
+var headers = __nccwpck_require__(6834)
 
 var Writable = (__nccwpck_require__(1642).Writable)
 var PassThrough = (__nccwpck_require__(1642).PassThrough)
@@ -33671,7 +34104,7 @@ module.exports = Extract
 
 /***/ }),
 
-/***/ 8860:
+/***/ 6834:
 /***/ ((__unused_webpack_module, exports) => {
 
 var alloc = Buffer.alloc
@@ -33973,16 +34406,16 @@ exports.decode = function (buf, filenameEncoding, allowUnknownFormat) {
 
 /***/ }),
 
-/***/ 2283:
+/***/ 1260:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
-exports.extract = __nccwpck_require__(7882)
-exports.pack = __nccwpck_require__(4930)
+exports.extract = __nccwpck_require__(9545)
+exports.pack = __nccwpck_require__(2456)
 
 
 /***/ }),
 
-/***/ 4930:
+/***/ 2456:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var constants = __nccwpck_require__(3186)
@@ -33994,7 +34427,7 @@ var Readable = (__nccwpck_require__(1642).Readable)
 var Writable = (__nccwpck_require__(1642).Writable)
 var StringDecoder = (__nccwpck_require__(1576).StringDecoder)
 
-var headers = __nccwpck_require__(8860)
+var headers = __nccwpck_require__(6834)
 
 var DMODE = parseInt('755', 8)
 var FMODE = parseInt('644', 8)
@@ -37670,6 +38103,9 @@ const docker_tags_1 = __nccwpck_require__(4665);
 // cutoff - a Go duration string to pass to the Docker API's 'until' argument, default '24h'
 function run(cutoff = '24h') {
     return __awaiter(this, void 0, void 0, function* () {
+        if (process.env.DEPENDABOT_DISABLE_CLEANUP === '1') {
+            return;
+        }
         try {
             const docker = new dockerode_1.default();
             const untilFilter = { until: [cutoff] };
@@ -37677,7 +38113,9 @@ function run(cutoff = '24h') {
             yield docker.pruneNetworks({ filters: untilFilter });
             core.info(`Pruning containers older than ${cutoff}`);
             yield docker.pruneContainers({ filters: untilFilter });
-            yield cleanupOldImageVersions(docker, docker_tags_1.UPDATER_IMAGE_NAME);
+            for (const image of (0, docker_tags_1.updaterImages)()) {
+                yield cleanupOldImageVersions(docker, image);
+            }
             yield cleanupOldImageVersions(docker, docker_tags_1.PROXY_IMAGE_NAME);
         }
         catch (error) {
@@ -37692,27 +38130,23 @@ function cleanupOldImageVersions(docker, imageName) {
     return __awaiter(this, void 0, void 0, function* () {
         const repo = (0, docker_tags_1.repositoryName)(imageName);
         const options = {
-            filters: {
-                reference: [repo]
-            }
+            filters: `{"reference":["${repo}"]}`
         };
         core.info(`Cleaning up images for ${repo}`);
         docker.listImages(options, function (err, imageInfoList) {
-            var _a, _b;
             return __awaiter(this, void 0, void 0, function* () {
                 if (imageInfoList && imageInfoList.length > 0) {
                     for (const imageInfo of imageInfoList) {
-                        // The given imageName is expected to be a digest, however to avoid any surprises in future
-                        // we fail over to check for a match on tags as well.
+                        // The given imageName is expected to be a tag + digest, however to avoid any surprises in future
+                        // we fail over to check for a match on just tags as well.
                         //
                         // This means we won't remove any image which matches an imageName of either of these notations:
-                        // - dependabot/image@sha256:$REF (current implementation)
+                        // - dependabot/image:$TAG@sha256:$REF (current implementation)
                         // - dependabot/image:v1
                         //
                         // Without checking imageInfo.RepoTags for a match, we would actually remove the latter even if
                         // this was the active version.
-                        if (((_a = imageInfo.RepoDigests) === null || _a === void 0 ? void 0 : _a.includes(imageName)) ||
-                            ((_b = imageInfo.RepoTags) === null || _b === void 0 ? void 0 : _b.includes(imageName))) {
+                        if (imageMatches(imageInfo, imageName)) {
                             core.info(`Skipping current image ${imageInfo.Id}`);
                             continue;
                         }
@@ -37732,6 +38166,14 @@ function cleanupOldImageVersions(docker, imageName) {
     });
 }
 exports.cleanupOldImageVersions = cleanupOldImageVersions;
+function imageMatches(imageInfo, imageName) {
+    if ((0, docker_tags_1.hasDigest)(imageName)) {
+        return imageInfo.RepoDigests
+            ? imageInfo.RepoDigests.includes((0, docker_tags_1.digestName)(imageName))
+            : false;
+    }
+    return imageInfo.RepoTags ? imageInfo.RepoTags.includes(imageName) : false;
+}
 run();
 
 
@@ -37746,11 +38188,20 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.repositoryName = exports.PROXY_IMAGE_NAME = exports.UPDATER_IMAGE_NAME = void 0;
+exports.digestName = exports.hasDigest = exports.repositoryName = exports.updaterImages = exports.updaterImageName = exports.PROXY_IMAGE_NAME = void 0;
+// eslint-disable-next-line import/extensions
 const containers_json_1 = __importDefault(__nccwpck_require__(8708));
-exports.UPDATER_IMAGE_NAME = containers_json_1.default.updater;
 exports.PROXY_IMAGE_NAME = containers_json_1.default.proxy;
-const imageNamePattern = '^(?<repository>(([a-zA-Z0-9._-]+([:[0-9]+[^/]))?([a-zA-Z0-9._/-]+)?))((:[a-zA-Z0-9._/-]+)|(@sha256:[a-zA-Z0-9]{64}))?$';
+function updaterImageName(packageManager) {
+    return containers_json_1.default[packageManager];
+}
+exports.updaterImageName = updaterImageName;
+const updaterRegex = /ghcr.io\/dependabot\/dependabot-updater-([\w+])/;
+function updaterImages() {
+    return Object.values(containers_json_1.default).filter(image => image.match(updaterRegex));
+}
+exports.updaterImages = updaterImages;
+const imageNamePattern = '^(?<repository>(([a-zA-Z0-9._-]+([:[0-9]+[^/]))?([a-zA-Z0-9._/-]+)?))(:[a-zA-Z0-9._/-]+)?(?<digest>@sha256:[a-zA-Z0-9]{64})?$';
 function repositoryName(imageName) {
     const match = imageName.match(imageNamePattern);
     if (match === null || match === void 0 ? void 0 : match.groups) {
@@ -37761,6 +38212,29 @@ function repositoryName(imageName) {
     }
 }
 exports.repositoryName = repositoryName;
+function hasDigest(imageName) {
+    const match = imageName.match(imageNamePattern);
+    if (match === null || match === void 0 ? void 0 : match.groups) {
+        if (match === null || match === void 0 ? void 0 : match.groups['digest']) {
+            return true;
+        }
+        return false;
+    }
+    else {
+        throw Error('invalid image name');
+    }
+}
+exports.hasDigest = hasDigest;
+function digestName(imageName) {
+    const match = imageName.match(imageNamePattern);
+    if (match === null || match === void 0 ? void 0 : match.groups) {
+        return match.groups['repository'] + match.groups['digest'];
+    }
+    else {
+        throw Error('invalid image name');
+    }
+}
+exports.digestName = digestName;
 
 
 /***/ }),
@@ -37951,7 +38425,7 @@ module.exports = require("zlib");
 /***/ ((module) => {
 
 "use strict";
-module.exports = JSON.parse('{"proxy":"ghcr.io/github/dependabot-update-job-proxy/dependabot-update-job-proxy@sha256:d1625c26959ec8a418a11cfe9378ea70cdd5b9c8e651bb64909581c21739ce35","updater":"ghcr.io/dependabot/dependabot-updater/dependabot-updater@sha256:9f31384d4df63de629308a36189af5730835318b2810493cc48cf7d7a7abc91a"}');
+module.exports = JSON.parse('{"proxy":"ghcr.io/github/dependabot-update-job-proxy/dependabot-update-job-proxy:v2.0.20230206213225@sha256:cdbf00a58a828e832eeaee8304729d17cc0c1c47b6ffffbe70ae06b979b5db35","bundler":"ghcr.io/dependabot/dependabot-updater-bundler:v2.0.20230201230055@sha256:959139f7652c86215d834e5939e9a8a9ea7bd75076e3e8301c5a953dbda1fb06","cargo":"ghcr.io/dependabot/dependabot-updater-cargo:v2.0.20230210184231@sha256:7c0d74f54209ddc2bb5758264158749bdf55db55cbd64a819be615f4c8e6a2ff","composer":"ghcr.io/dependabot/dependabot-updater-composer:v2.0.20230210184231@sha256:f38e048ff34a78c187053e192069dc96bf5696be6e417160440dec830560976f","pub":"ghcr.io/dependabot/dependabot-updater-pub:v2.0.20230210184231@sha256:7eccfede4c8936375e45d13785c4e10a114a8e234d2bb2586c723fe94fc336f5","docker":"ghcr.io/dependabot/dependabot-updater-docker:v2.0.20230210184231@sha256:5124d41eca400832d6978407d3dae8042661272bc8ab32b05fafc7482e56917e","elm":"ghcr.io/dependabot/dependabot-updater-elm:v2.0.20230210184231@sha256:a2a31eee179a12ca4dc77d653b97670b8629e6db57937b8950761efc0e668d8a","github_actions":"ghcr.io/dependabot/dependabot-updater-github-actions:v2.0.20230210184231@sha256:1d08506f41c9db18acf8351c1c065e7fa2963db6fa104771de417bff87efe772","submodules":"ghcr.io/dependabot/dependabot-updater-gitsubmodule:v2.0.20230210184231@sha256:be7cc88b9136710056cb546c0b105454803d086a39df4b5be75b53fc958640cd","go_modules":"ghcr.io/dependabot/dependabot-updater-gomod:v2.0.20230210184231@sha256:8aaf5035410260d049285f348862990afa00a387d0d02d80107cb22cfa722feb","gradle":"ghcr.io/dependabot/dependabot-updater-gradle:v2.0.20230210184231@sha256:7e21f6eff72224b9ae7d6ca066b63fc21142c6260f826331a03b0a75f04f7abc","maven":"ghcr.io/dependabot/dependabot-updater-maven:v2.0.20230210184231@sha256:ff06a70ac17dc4272d46b179cc4644fefb88c348e593e990a1be14d6813cdc9d","hex":"ghcr.io/dependabot/dependabot-updater-mix:v2.0.20230130173627@sha256:cbe353e417c2f7ef2363f514da9edeb68147ee55f8f502ffd1938c52515a2fa6","nuget":"ghcr.io/dependabot/dependabot-updater-nuget:v2.0.20230130173627@sha256:3f757d5efc797a7a4926c262dcc20c5fc8e07c305691bacdbe251fcb564e9d9c","npm_and_yarn":"ghcr.io/dependabot/dependabot-updater-npm:v2.0.20230210184231@sha256:893bd333596df961303026b7d432f4d47f5e1c9c61a01d535b6a73bba2210571","pip":"ghcr.io/dependabot/dependabot-updater-pip:v2.0.20230210184231@sha256:d24b58f99dea894dce45e50dd2e0cf06c58305b9c337546da11be5bd436a2c33","terraform":"ghcr.io/dependabot/dependabot-updater-terraform:v2.0.20230210184231@sha256:1c7abab524ac4a97b278357725332dcce0db691424b504817863f0dca83f8468"}');
 
 /***/ }),
 

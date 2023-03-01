@@ -19,7 +19,7 @@ jobs:
 
       - name: Read .nvmrc
         id: nvm
-        run: echo ::set-output name=NVMRC::$(cat .nvmrc)
+        run: echo "NVMRC=$(cat .nvmrc)" >> $GITHUB_OUTPUT
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -30,7 +30,9 @@ jobs:
         run: npm clean-install
 
       - name: Pre-fetch the pinned images
-        run: npm run fetch-images
+        run: npm run fetch-images -- bundler
 
       - name: Run integration tests
         run: npm run test-integration
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

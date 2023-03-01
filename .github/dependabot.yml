@@ -2,8 +2,9 @@ version: 2
 updates:
   - package-ecosystem: 'docker'
     directory: '/docker'
+    open-pull-requests-limit: 20
     schedule:
-      interval: 'daily'
+      interval: 'monthly'
     registries:
       - ghcr
   - package-ecosystem: "github-actions"
